@@ -1,6 +1,8 @@
 {
-        "width_max":0.95,
-        "width_min":0.05,
-        "cover_max":0.95,
-        "cover_min":0.05
+        "width_max":1.00,
+        "width_min":0.03,
+        "cover_max":0.99,
+        "cover_min":0.03,
+        "mutal_max":0.75,
+        "mutal_min":0.25
 }

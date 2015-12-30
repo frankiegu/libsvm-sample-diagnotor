@@ -30,15 +30,15 @@ import "bufio"
 import "strings"
 import "fmt"
 
-type Diagnose struct {
-	avg_width int
-	row_cnt   int
-	max_width int
-	min_width int
-	positive  int
-	negative  int
-	features  int
-	coverage  map[string]int
+type DiagnoseIndecis struct {
+	avgWidth int            /* average number of features in one row */
+	rowCnt   int            /* number of sample rows */
+	maxWidth int            /* max number of features in one row */
+	minWidth int            /* min number of reatures in one row */
+	positive int            /* number of positive samples */
+	negative int            /* nmuber of negative samples */
+	features int            /* not in use */
+	coverage map[string]int /* storage of feature and coresponding coverage */
 }
 
 const MaxUint = ^uint(0)
@@ -46,10 +46,25 @@ const MinUint = 0
 const MaxInt = int(MaxUint >> 1)
 const MinInt = -MaxInt - 1
 
-func diagnose(cfg map[string]interface{}) interface{} {
+func Diagnose(cfg map[string]float32) interface{} {
+	/*
+		Performing a diagnose on sample rows.
 
-	var dig Diagnose = Diagnose{0, 0, MinInt, MaxInt, 0, 0, 0, make(map[string]int, 1)}
-	var feature_sum int = 0
+		input:
+			cfg        a map[string]float32 contains all thresholds which loaded
+			           from configuration file or specified by command line options.
+
+		output:
+			Write diagnose results into different files.
+
+			    sample.sumit.txt           :  contains all summarys(rowCnt, avg of features, etc.)
+			    feature.coverage_more.txt  :  contains all features whose coverage are more than the coverage upper bound.
+			    feature.coverage_less.txt  :  contains all features whose coverage are less than the coverage lower bound.
+			    feature.coverage_full.txt  :  contains all features coverage(the raw count number, not in precent)
+	*/
+
+	var dig = DiagnoseIndecis{0, 0, MinInt, MaxInt, 0, 0, 0, make(map[string]int, 1)}
+	var featureSum int = 0
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -61,13 +76,13 @@ func diagnose(cfg map[string]interface{}) interface{} {
 
 		fields := strings.Split(strings.Trim(line, " \t\n"), "\t")
 		if len(fields) < 2 {
-			fmt.Println("Bad sample:%v", line)
-			panic(fmt.Sprintf("Bad sample:%v", line))
+			fmt.Println("Expected samples from stdin; Abort!")
+			os.Exit(-1)
 		}
 
-		dig.row_cnt += 1 /* 总行数 */
+		dig.rowCnt += 1 /* 总行数 */
 		width := len(fields) - 1
-		feature_sum += width
+		featureSum += width
 
 		if fields[0] == "-1" {
 			dig.negative += 1
@@ -80,12 +95,12 @@ func diagnose(cfg map[string]interface{}) interface{} {
 			dig.coverage[feature] += 1
 		}
 
-		if width < dig.min_width {
-			dig.min_width = width /* 最小特征数 */
+		if width < dig.minWidth {
+			dig.minWidth = width /* 最小特征数 */
 		}
 
-		if width > dig.max_width {
-			dig.max_width = width /* 最大特征数 */
+		if width > dig.maxWidth {
+			dig.maxWidth = width /* 最大特征数 */
 		}
 
 	}
@@ -93,23 +108,38 @@ func diagnose(cfg map[string]interface{}) interface{} {
 	file, err := os.Create("sample.sumit.txt")
 	check(err)
 
-	file.WriteString(fmt.Sprintf("feature.max = %d\n", dig.max_width))
-	file.WriteString(fmt.Sprintf("feature.min = %d\n", dig.min_width))
-	file.WriteString(fmt.Sprintf("feature.avg = %.3f\n", float32(feature_sum)/float32(dig.row_cnt)))
+	file.WriteString(fmt.Sprintf("feature.max = %d\n", dig.maxWidth))
+	file.WriteString(fmt.Sprintf("feature.min = %d\n", dig.minWidth))
+	file.WriteString(fmt.Sprintf("feature.avg = %.3f\n", float32(featureSum)/float32(dig.rowCnt)))
 	file.WriteString(fmt.Sprintf("positive    = %d\n", dig.positive))
 	file.WriteString(fmt.Sprintf("negative    = %d\n", dig.negative))
-	file.WriteString(fmt.Sprintf("totalcnt    = %d (%d + %d)\n", dig.row_cnt, dig.positive, dig.negative))
+	file.WriteString(fmt.Sprintf("totalcnt    = %d (%d + %d)\n", dig.rowCnt, dig.positive, dig.negative))
 	file.Close()
 
-	file, err = os.Create("feature.coverage.txt")
+	fileMore, err := os.Create("feature.coverage_more.txt")
+	check(err)
+
+	fileLess, err := os.Create("feature.coverage_less.txt")
+	check(err)
+
+	fileFull, err := os.Create("feature.coverage_full.txt")
 	check(err)
 
 	for k, v := range dig.coverage {
-		_, err = file.WriteString(fmt.Sprintf("%s\t%d\n", k, v))
-		check(err)
+		ratio := float32(v) / float32(dig.rowCnt)
+		if ratio > cfg["cover_max"] {
+			_, err = fileMore.WriteString(fmt.Sprintf("%s\t%d\n", k, v))
+			check(err)
+		} else if ratio < cfg["cover_min"] {
+			_, err = fileLess.WriteString(fmt.Sprintf("%s\t%d\n", k, v))
+			check(err)
+		}
+		fileFull.WriteString(fmt.Sprintf("%s\t%d\n", k, v))
 	}
 
-	file.Close()
+	fileMore.Close()
+	fileLess.Close()
+	fileFull.Close()
 
 	return nil
 }

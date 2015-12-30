@@ -2,7 +2,7 @@ all: diagnotor
 
 
 diagnotor:
-	go build -o diagnotor core/main.go core/diagnose.go
+	go build -o diagnotor core/main.go core/diagnose.go core/config.go
 
 
 clean:
