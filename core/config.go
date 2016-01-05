@@ -27,7 +27,13 @@ package main
 import "flag"
 import "encoding/json"
 import "io/ioutil"
+import "strings"
 import "strconv"
+
+type Configuration struct {
+	thresholds map[string]float32 /* thresholds from configration */
+	groupTags  []string           /* options specified by command line */
+}
 
 func FloatValue(str string) float32 {
 	/*
@@ -46,7 +52,7 @@ func FloatValue(str string) float32 {
 	return float32(f64)
 }
 
-func Specified(cfg map[string]float32) map[string]float32 {
+func Specified(cfg Configuration) Configuration {
 	/*
 		load Config file as a map[key(string)]value(float32)
 
@@ -57,6 +63,7 @@ func Specified(cfg map[string]float32) map[string]float32 {
 			--cover-min         specify feature coverage lower bound for report
 			--mutal-max         specify mutal-infermation uppper bound for report
 			--mutal-min         specify mutal-infermation lower bound for report
+			--group-tag         specify tags of feature group. seperated by comma
 
 		output:
 			use any manual specified value instead of value readed from configuration file;
@@ -71,36 +78,45 @@ func Specified(cfg map[string]float32) map[string]float32 {
 	var mutalMax = FloatValue(*(flag.String("mutal-max", "-1", "Threshold for mutal")))
 	var mutalMin = FloatValue(*(flag.String("mutal-min", "-1", "Threshold for mutal")))
 
+	var groupTag = flag.String("group-tag", "", "feature group tags, seperated by comma")
+
 	flag.Parse()
 
 	if widthMax > 0 {
-		cfg["width_max"] = widthMax
+		cfg.thresholds["width_max"] = widthMax
 	}
 
 	if widthMin > 0 {
-		cfg["width_min"] = widthMin
+		cfg.thresholds["width_min"] = widthMin
 	}
 
 	if coverMax > 0 {
-		cfg["cover_max"] = coverMax
+		cfg.thresholds["cover_max"] = coverMax
 	}
 
 	if coverMin > 0 {
-		cfg["cover_min"] = coverMin
+		cfg.thresholds["cover_min"] = coverMin
 	}
 
 	if mutalMax > 0 {
-		cfg["mutal_max"] = mutalMax
+		cfg.thresholds["mutal_max"] = mutalMax
 	}
 
 	if mutalMin > 0 {
-		cfg["mutal_min"] = mutalMin
+		cfg.thresholds["mutal_min"] = mutalMin
+	}
+
+	if len(*groupTag) > 0 {
+		var fields []string = strings.Split(*groupTag, ",")
+		for _, tag := range fields {
+			cfg.groupTags = append(cfg.groupTags, strings.Trim(tag, " \""))
+		}
 	}
 
 	return cfg
 }
 
-func Load(cfgName string) map[string]float32 {
+func Load(cfgName string) Configuration {
 	/*
 		load Config file as a map[key(string)]value(float32)
 
@@ -114,10 +130,11 @@ func Load(cfgName string) map[string]float32 {
 			Notice: Abort on any error!
 	*/
 
-	cfg := make(map[string]float32, 1)
+	var cfg Configuration =  Configuration{}
+
 	contents, err := ioutil.ReadFile(cfgName)
 	check(err)
-	err = json.Unmarshal(contents, &cfg)
+	err = json.Unmarshal(contents, &(cfg.thresholds))
 	check(err)
 
 	return Specified(cfg)

@@ -46,12 +46,12 @@ const MinUint = 0
 const MaxInt = int(MaxUint >> 1)
 const MinInt = -MaxInt - 1
 
-func Diagnose(cfg map[string]float32) interface{} {
+func Diagnose(cfg Configuration) interface{} {
 	/*
 		Performing a diagnose on sample rows.
 
 		input:
-			cfg        a map[string]float32 contains all thresholds which loaded
+			cfg        a Configuration object which contains all thresholds which loaded
 			           from configuration file or specified by command line options.
 
 		output:
@@ -65,6 +65,13 @@ func Diagnose(cfg map[string]float32) interface{} {
 
 	var dig = DiagnoseIndecis{0, 0, MinInt, MaxInt, 0, 0, 0, make(map[string]int, 1)}
 	var featureSum int = 0
+	var group = make(map[string]int, 1)
+
+	if len(cfg.groupTags) > 0 {
+		for _, tag := range cfg.groupTags {
+			group[tag] = 0
+		}
+	}
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -80,9 +87,21 @@ func Diagnose(cfg map[string]float32) interface{} {
 			os.Exit(-1)
 		}
 
+
 		dig.rowCnt += 1 /* 总行数 */
 		width := len(fields) - 1
 		featureSum += width
+
+		var mathcedTags = make(map[string]interface{})
+		for _, featureName := range fields {
+			for tag, _ := range group {
+				_, exist := mathcedTags[tag];
+				if strings.Contains(featureName, tag) && exist == false {
+					group[tag] += 1
+					mathcedTags[tag] = nil
+				}
+			}
+		}
 
 		if fields[0] == "-1" {
 			dig.negative += 1
@@ -108,12 +127,18 @@ func Diagnose(cfg map[string]float32) interface{} {
 	file, err := os.Create("sample.sumit.txt")
 	check(err)
 
-	file.WriteString(fmt.Sprintf("feature.max = %d\n", dig.maxWidth))
-	file.WriteString(fmt.Sprintf("feature.min = %d\n", dig.minWidth))
-	file.WriteString(fmt.Sprintf("feature.avg = %.3f\n", float32(featureSum)/float32(dig.rowCnt)))
 	file.WriteString(fmt.Sprintf("positive    = %d\n", dig.positive))
 	file.WriteString(fmt.Sprintf("negative    = %d\n", dig.negative))
 	file.WriteString(fmt.Sprintf("totalcnt    = %d (%d + %d)\n", dig.rowCnt, dig.positive, dig.negative))
+
+	file.WriteString(fmt.Sprintf("feature.max = %d\n", dig.maxWidth))
+	file.WriteString(fmt.Sprintf("feature.min = %d\n", dig.minWidth))
+	file.WriteString(fmt.Sprintf("feature.avg = %.3f\n", float32(featureSum)/float32(dig.rowCnt)))
+
+	for tag, cnt := range group {
+		file.WriteString(fmt.Sprintf("%s.coverage = %.3f\n", tag, float32(cnt)/float32(dig.rowCnt)))
+	}
+
 	file.Close()
 
 	fileMore, err := os.Create("feature.coverage_more.txt")
@@ -127,10 +152,10 @@ func Diagnose(cfg map[string]float32) interface{} {
 
 	for k, v := range dig.coverage {
 		ratio := float32(v) / float32(dig.rowCnt)
-		if ratio > cfg["cover_max"] {
+		if ratio > cfg.thresholds["cover_max"] {
 			_, err = fileMore.WriteString(fmt.Sprintf("%s\t%d\n", k, v))
 			check(err)
-		} else if ratio < cfg["cover_min"] {
+		} else if ratio < cfg.thresholds["cover_min"] {
 			_, err = fileLess.WriteString(fmt.Sprintf("%s\t%d\n", k, v))
 			check(err)
 		}
