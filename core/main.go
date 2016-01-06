@@ -24,10 +24,19 @@ SOFTWARE.
 
 package main
 
-import "encoding/json"
-import ioutil "io/ioutil"
-
 func check(value interface{}) {
+	/*
+		This is an assert function;
+
+		input:
+			<value>        value can be bool, error or string
+
+		output:
+			check will panic when value is false(bool) or error(not nil) or string(not empty),
+			however NOTHING will happen when value is nil
+
+	*/
+
 	if value == nil {
 		return
 	}
@@ -49,21 +58,10 @@ func check(value interface{}) {
 			panic(s)
 		}
 	default:
-		/* fmt.Println(value); */
 		panic(v)
 	}
 }
 
-/* load 配置文件, 返回包含所有值的map */
-func load(cfg_name string) map[string]interface{} {
-	cfg := make(map[string]interface{}, 1)
-	contents, err := ioutil.ReadFile(cfg_name)
-	check(err)
-	err = json.Unmarshal(contents, &cfg)
-	check(err)
-	return cfg
-}
-
 func main() {
-	diagnose(load("./thresholds.json"))
+	Diagnose(Load("thresholds.json"))
 }
