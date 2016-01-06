@@ -33,6 +33,7 @@ import "strconv"
 type Configuration struct {
 	thresholds map[string]float32 /* thresholds from configration */
 	groupTags  []string           /* options specified by command line */
+	enable_mi  bool               /* whether evaluate mutal infermation between feature and label */
 }
 
 func FloatValue(str string) float32 {
@@ -64,6 +65,7 @@ func Specified(cfg Configuration) Configuration {
 			--mutal-max         specify mutal-infermation uppper bound for report
 			--mutal-min         specify mutal-infermation lower bound for report
 			--group-tag         specify tags of feature group. seperated by comma
+			--enable-mi         enable mutal-infermation calculation, default is false
 
 		output:
 			use any manual specified value instead of value readed from configuration file;
@@ -79,6 +81,8 @@ func Specified(cfg Configuration) Configuration {
 	var mutalMin = FloatValue(*(flag.String("mutal-min", "-1", "Threshold for mutal")))
 
 	var groupTag = flag.String("group-tag", "", "feature group tags, seperated by comma")
+
+	var enable_mi = flag.Bool("enable-mi", false, "Whether enable mutal infermation evaluation, this is expensive, default is false")
 
 	flag.Parse()
 
@@ -113,6 +117,7 @@ func Specified(cfg Configuration) Configuration {
 		}
 	}
 
+	cfg.enable_mi = *enable_mi
 	return cfg
 }
 
@@ -130,7 +135,7 @@ func Load(cfgName string) Configuration {
 			Notice: Abort on any error!
 	*/
 
-	var cfg Configuration =  Configuration{}
+	var cfg Configuration = Configuration{}
 
 	contents, err := ioutil.ReadFile(cfgName)
 	check(err)
