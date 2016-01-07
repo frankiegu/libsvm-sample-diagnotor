@@ -63,5 +63,6 @@ func check(value interface{}) {
 }
 
 func main() {
-	Diagnose(Load("thresholds.json"))
+	var config = Load("thresholds.json")
+	basic_statistics(config)
 }
