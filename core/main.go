@@ -24,6 +24,8 @@ SOFTWARE.
 
 package main
 
+import "runtime"
+
 func check(value interface{}) {
 	/*
 		This is an assert function;
@@ -63,6 +65,8 @@ func check(value interface{}) {
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	var config = Load("thresholds.json")
 	basic_statistics(config)
 }

@@ -27,6 +27,7 @@ package main
 import "os"
 import "io"
 import "math"
+import "sort"
 import "bufio"
 import "strings"
 import "strconv"
@@ -44,6 +45,7 @@ type DiagnoseIndices struct {
 	features   int            /* not in use */
 	coverage   map[string]int /* storage of feature and coresponding coverage */
 	featureSum int            /* tmp value of feautre statistic */
+	featureNum int            /* total feature number */
 }
 
 const MaxUint = ^uint(0)
@@ -67,7 +69,7 @@ func basic_statistics(cfg Configuration) {
 			    feature.coverage_less.txt  :  contains all features whose coverage are less than the coverage lower bound.
 	*/
 
-	var dig = DiagnoseIndices{0, 0, MinInt, MaxInt, 0, 0, 0, make(map[string]int, 1), 0}
+	var dig = DiagnoseIndices{0, 0, MinInt, MaxInt, 0, 0, 0, make(map[string]int, 1), 0, 0}
 	var group = make(map[string]int, 1)
 
 	if len(cfg.groupTags) > 0 {
@@ -79,7 +81,15 @@ func basic_statistics(cfg Configuration) {
 	var featureAppearance = make(map[string]int, 1)
 	var featurePositiveAppearance = make(map[string]int, 1)
 
-	reader := bufio.NewReader(os.Stdin)
+	var reader *bufio.Reader
+	if len(cfg.inputFile) > 0 {
+		fp, err := os.Open(cfg.inputFile)
+		check(err)
+		reader = bufio.NewReader(fp)
+	} else {
+		reader = bufio.NewReader(os.Stdin)
+	}
+
 	for {
 		line, err := reader.ReadString('\n')
 		if err == io.EOF || len(line) == 0 {
@@ -89,7 +99,7 @@ func basic_statistics(cfg Configuration) {
 
 		fields := strings.Split(strings.Trim(line, " \t\n"), "\t")
 		if len(fields) < 2 {
-			fmt.Println("Expected samples from stdin; Abort!")
+			fmt.Println("Abort!\n\tspecify sample-file by command-line or pipe sample rows by os.Stdin.")
 			os.Exit(-1)
 		}
 
@@ -98,8 +108,9 @@ func basic_statistics(cfg Configuration) {
 		storageByColumes(fields, featurePositiveAppearance, featureAppearance)
 	}
 
+	dig.featureNum = len(featureAppearance)
 	dumpIndices(dig, group, cfg)
-	calulateFeatureMutalInformation(cfg, featurePositiveAppearance, featureAppearance, dig)
+	calulateFeatureMutualInformation(cfg, featurePositiveAppearance, featureAppearance, dig)
 }
 
 func statisticRowIndex(fields []string, dig *DiagnoseIndices) {
@@ -134,6 +145,7 @@ func dumpIndices(dig DiagnoseIndices, group map[string]int, cfg Configuration) {
 	file.WriteString(fmt.Sprintf("negative    = %d\n", dig.negative))
 	file.WriteString(fmt.Sprintf("totalcnt    = %d (%d + %d)\n", dig.rowCnt, dig.positive, dig.negative))
 
+	file.WriteString(fmt.Sprintf("feature.num = %df\n", dig.featureNum))
 	file.WriteString(fmt.Sprintf("feature.max = %d\n", dig.maxWidth))
 	file.WriteString(fmt.Sprintf("feature.min = %d\n", dig.minWidth))
 	file.WriteString(fmt.Sprintf("feature.avg = %.3f\n", float32(dig.featureSum)/float32(dig.rowCnt)))
@@ -227,19 +239,25 @@ func storageByColumes(fields []string, featurePositiveAppearance map[string]int,
 	}
 }
 
-type MutalInformation struct {
+type MutualInformation struct {
 	featureName string
 	mi          float64
 }
+
+type MutualArray []MutualInformation
+
+func (p MutualArray) Len() int           { return len(p) }
+func (p MutualArray) Less(i, j int) bool { return p[i].mi > p[j].mi }
+func (p MutualArray) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 type FeatureColume struct {
 	featureName string
 	appearance  int
 }
 
-func calulateFeatureMutalInformation(cfg Configuration, featurePositiveAppearance map[string]int, featureAppearance map[string]int, dig DiagnoseIndices) {
+func calulateFeatureMutualInformation(cfg Configuration, featurePositiveAppearance map[string]int, featureAppearance map[string]int, dig DiagnoseIndices) {
 	/*
-		Calulate the mutal infermation between given feature and sample labels
+		Calulate the mutual infermation between given feature and sample labels
 
 		input:
 			cfg                              configurations
@@ -248,8 +266,8 @@ func calulateFeatureMutalInformation(cfg Configuration, featurePositiveAppearanc
 			dig                              storage of indices
 
 		output:
-			a file named "feature.mutal.info" which contains feature-names and
-			its mutal information writen in the same line.
+			a file named "feature.mutual.info" which contains feature-names and
+			its mutual information writen in the same line.
 
 	*/
 
@@ -257,13 +275,9 @@ func calulateFeatureMutalInformation(cfg Configuration, featurePositiveAppearanc
 		return
 	}
 
-	mutal, err := os.Create("feature.mutal.info")
-	check(err)
-
 	var barrier sync.WaitGroup
-	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	var miChannel = make(chan MutalInformation, runtime.NumCPU())
+	var miChannel = make(chan MutualInformation, runtime.NumCPU())
 	var feChannel = make(chan FeatureColume, runtime.NumCPU())
 
 	var total = float64(dig.rowCnt)
@@ -298,7 +312,7 @@ func calulateFeatureMutalInformation(cfg Configuration, featurePositiveAppearanc
 					mi += float64(FF) * math.Log(total*float64(FF)/float64(noShow*dig.negative))
 				}
 
-				miChannel <- MutalInformation{feature.featureName, mi / float64(total) * float64(10000)}
+				miChannel <- MutualInformation{feature.featureName, mi / float64(total) * float64(100000)}
 			}
 			barrier.Done()
 		}()
@@ -320,10 +334,31 @@ func calulateFeatureMutalInformation(cfg Configuration, featurePositiveAppearanc
 		close(miChannel)
 	}()
 
-	/* [main routine] receives calculated mutal information and write into file system */
-	for mutalInfo := range miChannel {
-		mutal.WriteString(fmt.Sprintf("%s\t%.3f\n", mutalInfo.featureName, mutalInfo.mi))
+	/* [main routine] receives calculated mutual information and write into file system */
+	var mutuals MutualArray
+	for mutualInfo := range miChannel {
+		mutuals = append(mutuals, mutualInfo)
+	}
+	sort.Sort(mutuals)
+
+	mutualLess, err := os.Create("feature.mutual.info.less")
+	mutualMore, err := os.Create("feature.mutual.info.more")
+	check(err)
+
+	head := int(cfg.thresholds["mutual_max"] * float32(dig.rowCnt))
+	tail := int((1.0 - cfg.thresholds["mutual_max"]) * float32(dig.rowCnt))
+
+	for i, m := range mutuals {
+		if i < head {
+			mutualMore.WriteString(fmt.Sprintf("%s\t%.4f\n", m.featureName, m.mi))
+			continue
+		}
+		if i > tail {
+			mutualLess.WriteString(fmt.Sprintf("%s\t%.4f\n", m.featureName, m.mi))
+			continue
+		}
 	}
 
-	mutal.Close()
+	mutualMore.Close()
+	mutualLess.Close()
 }

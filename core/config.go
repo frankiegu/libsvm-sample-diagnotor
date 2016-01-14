@@ -33,7 +33,8 @@ import "strconv"
 type Configuration struct {
 	thresholds map[string]float32 /* thresholds from configration */
 	groupTags  []string           /* options specified by command line */
-	enable_mi  bool               /* whether evaluate mutal infermation between feature and label */
+	enable_mi  bool               /* whether evaluate mutual infermation between feature and label */
+	inputFile  string             /* input file name of smaples */
 }
 
 func FloatValue(str string) float32 {
@@ -62,10 +63,10 @@ func Specified(cfg Configuration) Configuration {
 			--feature-min       specify feature number lower bound for report
 			--cover-max         specify feature coverage upperbound for report
 			--cover-min         specify feature coverage lower bound for report
-			--mutal-max         specify mutal-infermation uppper bound for report
-			--mutal-min         specify mutal-infermation lower bound for report
+			--mutual-max        specify mutual-infermation uppper bound for report
+			--mutual-min        specify mutual-infermation lower bound for report
 			--group-tag         specify tags of feature group. seperated by comma
-			--enable-mi         enable mutal-infermation calculation, default is false
+			--enable-mi         enable mutual-infermation calculation, default is false
 
 		output:
 			use any manual specified value instead of value readed from configuration file;
@@ -77,12 +78,12 @@ func Specified(cfg Configuration) Configuration {
 	var widthMin = FloatValue(*(flag.String("feature-min", "-1", "Threshold for width")))
 	var coverMax = FloatValue(*(flag.String("cover-max", "-1", "Threshold for cover")))
 	var coverMin = FloatValue(*(flag.String("cover-min", "-1", "Threshold for cover")))
-	var mutalMax = FloatValue(*(flag.String("mutal-max", "-1", "Threshold for mutal")))
-	var mutalMin = FloatValue(*(flag.String("mutal-min", "-1", "Threshold for mutal")))
+	var mutualMax = FloatValue(*(flag.String("mutual-max", "-1", "Threshold for mutual")))
+	var mutualMin = FloatValue(*(flag.String("mutual-min", "-1", "Threshold for mutual")))
 
 	var groupTag = flag.String("group-tag", "", "feature group tags, seperated by comma")
 
-	var enable_mi = flag.Bool("enable-mi", false, "Whether enable mutal infermation evaluation, this is expensive, default is false")
+	var enable_mi = flag.Bool("enable-mi", false, "Whether enable mutual infermation evaluation, this is expensive, default is false")
 
 	flag.Parse()
 
@@ -102,12 +103,12 @@ func Specified(cfg Configuration) Configuration {
 		cfg.thresholds["cover_min"] = coverMin
 	}
 
-	if mutalMax > 0 {
-		cfg.thresholds["mutal_max"] = mutalMax
+	if mutualMax > 0 {
+		cfg.thresholds["mutual_max"] = mutualMax
 	}
 
-	if mutalMin > 0 {
-		cfg.thresholds["mutal_min"] = mutalMin
+	if mutualMin > 0 {
+		cfg.thresholds["mutual_min"] = mutualMin
 	}
 
 	if len(*groupTag) > 0 {
@@ -115,6 +116,10 @@ func Specified(cfg Configuration) Configuration {
 		for _, tag := range fields {
 			cfg.groupTags = append(cfg.groupTags, strings.Trim(tag, " \""))
 		}
+	}
+
+	if flag.NArg() > 0 {
+		cfg.inputFile = flag.Args()[0]
 	}
 
 	cfg.enable_mi = *enable_mi
